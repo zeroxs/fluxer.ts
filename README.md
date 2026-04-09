@@ -85,29 +85,6 @@ const roles = await client.fetchRoles(guildId);
 await client.setNickname(guildId, 'Cool Bot');
 ```
 
-### Interactions (Slash Commands)
-
-```typescript
-import { InteractionCallbackType } from 'fluxer.ts';
-
-// Register commands
-await client.registerCommands(applicationId, [
-  { name: 'ping', description: 'Pong!' },
-]);
-
-// Handle interactions
-client.on('interactionCreate', async (interaction) => {
-  if (interaction.data?.name === 'ping') {
-    await client.respondToInteraction(
-      interaction.id,
-      interaction.token,
-      InteractionCallbackType.ChannelMessageWithSource,
-      { content: 'Pong!' },
-    );
-  }
-});
-```
-
 ### Events
 
 ```typescript
@@ -115,7 +92,7 @@ client.on('ready', (user, guilds) => { });
 client.on('messageCreate', (message) => { });
 client.on('messageUpdate', (message) => { });
 client.on('messageDelete', ({ id, channel_id }) => { });
-client.on('interactionCreate', (interaction) => { });
+// client.on('interactionCreate') — not yet supported by Fluxer
 client.on('guildCreate', (guild) => { });
 client.on('guildDelete', ({ id }) => { });
 client.on('guildMemberAdd', (member) => { });

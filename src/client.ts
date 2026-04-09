@@ -5,8 +5,8 @@ import { REST } from './rest.js';
 import { Gateway } from './gateway.js';
 import { Routes } from './routes.js';
 import type {
-  Snowflake, User, Guild, GuildMember, Channel, Message, Interaction,
-  MessageSendOptions, Embed, Role, InteractionCallbackType,
+  Snowflake, User, Guild, GuildMember, Channel, Message,
+  MessageSendOptions, Embed, Role,
 } from './types.js';
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ export interface ClientEvents {
   messageCreate: [message: Message];
   messageUpdate: [message: Partial<Message> & { id: Snowflake; channel_id: Snowflake }];
   messageDelete: [data: { id: Snowflake; channel_id: Snowflake; guild_id?: Snowflake }];
-  interactionCreate: [interaction: Interaction];
+  // interactionCreate: [interaction: Interaction]; // Not yet supported by Fluxer
   guildCreate: [guild: Guild];
   guildUpdate: [guild: Guild];
   guildDelete: [data: { id: Snowflake }];
@@ -166,9 +166,7 @@ export class Client extends EventEmitter {
       case 'MESSAGE_DELETE':
         this.emit('messageDelete', d as unknown as { id: Snowflake; channel_id: Snowflake; guild_id?: Snowflake });
         break;
-      case 'INTERACTION_CREATE':
-        this.emit('interactionCreate', d as unknown as Interaction);
-        break;
+      // INTERACTION_CREATE — not yet supported by Fluxer
       case 'GUILD_CREATE': {
         const guild = normalizeGuild(d);
         this.guilds.set(guild.id, guild);
@@ -293,15 +291,8 @@ export class Client extends EventEmitter {
     return this.rest.get<Message[]>(`${Routes.channelMessages(channelId)}${qs ? `?${qs}` : ''}`);
   }
 
-  /** Respond to an interaction. */
-  async respondToInteraction(interactionId: Snowflake, token: string, type: InteractionCallbackType, data?: { content?: string; embeds?: Embed[]; flags?: number; components?: unknown[] }): Promise<void> {
-    await this.rest.post(Routes.interactionCallback(interactionId, token), { body: { type, data } });
-  }
-
-  /** Register global application commands. */
-  async registerCommands(applicationId: Snowflake, commands: unknown[]): Promise<void> {
-    await this.rest.put(Routes.applicationCommands(applicationId), { body: commands });
-  }
+  // Interactions/slash commands — not yet supported by Fluxer.
+  // Methods will be added when the platform supports them.
 
   /** Set bot nickname in a guild. */
   async setNickname(guildId: Snowflake, nickname: string | null): Promise<void> {
