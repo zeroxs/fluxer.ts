@@ -1,0 +1,40 @@
+{
+  "name": "fluxer.ts",
+  "version": "0.1.0",
+  "description": "Lightweight, TypeScript-first SDK for building Fluxer bots",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["fluxer", "bot", "sdk", "api", "typescript", "discord"],
+  "author": "Sharon Fox & Vigil",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeroxs/fluxer.ts"
+  },
+  "bugs": "https://github.com/zeroxs/fluxer.ts/issues",
+  "homepage": "https://github.com/zeroxs/fluxer.ts#readme",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.6.0"
+  }
+}

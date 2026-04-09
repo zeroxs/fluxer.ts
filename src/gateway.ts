@@ -1,0 +1,208 @@
+/** WebSocket gateway client for Fluxer. Handles connection, heartbeat, resume, and reconnection. */
+
+import { EventEmitter } from 'events';
+import WebSocket from 'ws';
+import { GatewayOpcode, type GatewayPayload } from './types.js';
+
+const GATEWAY_VERSION = 1;
+const RECONNECT_INITIAL = 1000;
+const RECONNECT_MAX = 45000;
+
+export interface GatewayOptions {
+  token: string;
+  intents: number;
+  gatewayUrl: string;
+}
+
+export class Gateway extends EventEmitter {
+  private ws: WebSocket | null = null;
+  private token: string;
+  private intents: number;
+  private gatewayUrl: string;
+
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private heartbeatAck = true;
+  private sessionId: string | null = null;
+  private seq: number | null = null;
+  private resumeUrl: string | null = null;
+  private destroying = false;
+  private reconnectDelay = RECONNECT_INITIAL;
+
+  constructor(options: GatewayOptions) {
+    super();
+    this.token = options.token;
+    this.intents = options.intents;
+    this.gatewayUrl = options.gatewayUrl;
+  }
+
+  connect(): void {
+    const url = this.resumeUrl ?? this.gatewayUrl;
+    const fullUrl = `${url}?v=${GATEWAY_VERSION}&encoding=json`;
+
+    this.ws = new WebSocket(fullUrl);
+    this.ws.on('open', () => this.emit('debug', `Connected to ${url}`));
+    this.ws.on('message', (data: WebSocket.RawData) => this.onMessage(data));
+    this.ws.on('close', (code: number, reason: Buffer) => this.onClose(code, reason.toString()));
+    this.ws.on('error', (err: Error) => this.emit('error', err));
+  }
+
+  destroy(): void {
+    this.destroying = true;
+    this.stopHeartbeat();
+    this.ws?.close(1000);
+    this.ws = null;
+  }
+
+  private onMessage(raw: WebSocket.RawData): void {
+    const payload: GatewayPayload = JSON.parse(raw.toString());
+
+    if (payload.s !== null) this.seq = payload.s;
+
+    switch (payload.op) {
+      case GatewayOpcode.Hello:
+        this.startHeartbeat((payload.d as { heartbeat_interval: number }).heartbeat_interval);
+        if (this.sessionId) {
+          this.resume();
+        } else {
+          this.identify();
+        }
+        break;
+
+      case GatewayOpcode.HeartbeatAck:
+        this.heartbeatAck = true;
+        break;
+
+      case GatewayOpcode.Heartbeat:
+        this.sendHeartbeat();
+        break;
+
+      case GatewayOpcode.Dispatch:
+        this.handleDispatch(payload.t!, payload.d);
+        break;
+
+      case GatewayOpcode.Reconnect:
+        this.emit('debug', 'Server requested reconnect');
+        this.reconnect();
+        break;
+
+      case GatewayOpcode.InvalidSession:
+        this.emit('debug', `Invalid session (resumable: ${payload.d})`);
+        if (payload.d) {
+          setTimeout(() => this.resume(), 1000 + Math.random() * 4000);
+        } else {
+          this.sessionId = null;
+          this.seq = null;
+          this.resumeUrl = null;
+          setTimeout(() => this.identify(), 1000 + Math.random() * 4000);
+        }
+        break;
+    }
+  }
+
+  private handleDispatch(event: string, data: unknown): void {
+    if (event === 'READY') {
+      const ready = data as { session_id: string; resume_gateway_url?: string; user: unknown; guilds: unknown[] };
+      this.sessionId = ready.session_id;
+      this.resumeUrl = ready.resume_gateway_url ?? null;
+      this.reconnectDelay = RECONNECT_INITIAL;
+    }
+
+    if (event === 'RESUMED') {
+      this.reconnectDelay = RECONNECT_INITIAL;
+      this.emit('debug', 'Session resumed');
+    }
+
+    this.emit('dispatch', event, data);
+  }
+
+  private identify(): void {
+    this.send({
+      op: GatewayOpcode.Identify,
+      d: {
+        token: this.token,
+        intents: this.intents,
+        properties: {
+          os: process.platform,
+          browser: 'fluxer-sdk',
+          device: 'fluxer-sdk',
+        },
+      },
+      s: null,
+      t: null,
+    });
+  }
+
+  private resume(): void {
+    this.send({
+      op: GatewayOpcode.Resume,
+      d: {
+        token: this.token,
+        session_id: this.sessionId,
+        seq: this.seq,
+      },
+      s: null,
+      t: null,
+    });
+  }
+
+  private send(payload: GatewayPayload): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(payload));
+    }
+  }
+
+  private sendHeartbeat(): void {
+    this.send({ op: GatewayOpcode.Heartbeat, d: this.seq, s: null, t: null });
+  }
+
+  private startHeartbeat(interval: number): void {
+    this.stopHeartbeat();
+    this.heartbeatAck = true;
+    // Send first heartbeat with jitter
+    setTimeout(() => this.sendHeartbeat(), interval * Math.random());
+    this.heartbeatInterval = setInterval(() => {
+      if (!this.heartbeatAck) {
+        this.emit('debug', 'Heartbeat not acknowledged — reconnecting');
+        this.reconnect();
+        return;
+      }
+      this.heartbeatAck = false;
+      this.sendHeartbeat();
+    }, interval);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+
+  private onClose(code: number, reason: string): void {
+    this.stopHeartbeat();
+    this.emit('debug', `Connection closed: ${code} ${reason}`);
+
+    if (this.destroying) return;
+
+    // Non-recoverable close codes
+    const fatal = [4004, 4010, 4011, 4012, 4013, 4014];
+    if (fatal.includes(code)) {
+      this.emit('error', new Error(`Fatal gateway close: ${code} ${reason}`));
+      return;
+    }
+
+    this.reconnect();
+  }
+
+  private reconnect(): void {
+    this.stopHeartbeat();
+    this.ws?.close(4000);
+    this.ws = null;
+
+    const delay = this.reconnectDelay + Math.random() * 1000;
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, RECONNECT_MAX);
+
+    this.emit('debug', `Reconnecting in ${Math.round(delay)}ms`);
+    setTimeout(() => this.connect(), delay);
+  }
+}
