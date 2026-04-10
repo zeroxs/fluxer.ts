@@ -1,7 +1,19 @@
 /** Lightweight REST client for the Fluxer API. Built on native fetch. */
 
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { resolve, dirname } from 'path';
+
 const API_BASE = 'https://api.fluxer.app/v1';
-const USER_AGENT = 'fluxer.ts (https://github.com/zeroxs/fluxer.ts, 0.3.0)';
+const PKG_VERSION = (() => {
+  try {
+    const pkgPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+    return JSON.parse(readFileSync(pkgPath, 'utf-8')).version;
+  } catch {
+    return 'unknown';
+  }
+})();
+const USER_AGENT = `fluxer.ts (https://github.com/zeroxs/fluxer.ts, ${PKG_VERSION})`;
 
 export class FluxerAPIError extends Error {
   constructor(
