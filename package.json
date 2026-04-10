@@ -1,6 +1,6 @@
 {
   "name": "fluxer.ts",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Lightweight, TypeScript-first SDK for building Fluxer bots",
   "type": "module",
   "main": "./dist/index.js",
