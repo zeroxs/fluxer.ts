@@ -183,20 +183,20 @@ export class Gateway extends EventEmitter {
   private startHeartbeat(interval: number): void {
     this.stopHeartbeat();
     this.heartbeatAck = true;
-    // Send first heartbeat with jitter
+    // Send first heartbeat with jitter, then start the regular interval
     this.heartbeatJitterTimeout = setTimeout(() => {
       this.heartbeatJitterTimeout = null;
       this.sendHeartbeat();
+      this.heartbeatTimer = setInterval(() => {
+        if (!this.heartbeatAck) {
+          this.emit('debug', 'Heartbeat not acknowledged — reconnecting');
+          this.reconnect();
+          return;
+        }
+        this.heartbeatAck = false;
+        this.sendHeartbeat();
+      }, interval);
     }, interval * Math.random());
-    this.heartbeatTimer = setInterval(() => {
-      if (!this.heartbeatAck) {
-        this.emit('debug', 'Heartbeat not acknowledged — reconnecting');
-        this.reconnect();
-        return;
-      }
-      this.heartbeatAck = false;
-      this.sendHeartbeat();
-    }, interval);
   }
 
   private stopHeartbeat(): void {
