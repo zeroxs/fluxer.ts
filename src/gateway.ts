@@ -20,12 +20,15 @@ export class Gateway extends EventEmitter {
   private intents: number;
   private gatewayUrl: string;
 
-  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatJitterTimeout: ReturnType<typeof setTimeout> | null = null;
   private heartbeatAck = true;
   private sessionId: string | null = null;
   private seq: number | null = null;
   private resumeUrl: string | null = null;
   private destroying = false;
+  private reconnecting = false;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = RECONNECT_INITIAL;
 
   constructor(options: GatewayOptions) {
@@ -36,6 +39,7 @@ export class Gateway extends EventEmitter {
   }
 
   connect(): void {
+    this.reconnecting = false;
     const url = this.resumeUrl ?? this.gatewayUrl;
     const fullUrl = `${url}?v=${GATEWAY_VERSION}&encoding=json`;
 
@@ -49,12 +53,25 @@ export class Gateway extends EventEmitter {
   destroy(): void {
     this.destroying = true;
     this.stopHeartbeat();
-    this.ws?.close(1000);
-    this.ws = null;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.ws) {
+      this.ws.removeAllListeners();
+      this.ws.close(1000);
+      this.ws = null;
+    }
   }
 
   private onMessage(raw: WebSocket.RawData): void {
-    const payload: GatewayPayload = JSON.parse(raw.toString());
+    let payload: GatewayPayload;
+    try {
+      payload = JSON.parse(raw.toString());
+    } catch (err) {
+      this.emit('debug', `Failed to parse gateway message: ${err}`);
+      return;
+    }
 
     if (payload.s !== null) this.seq = payload.s;
 
@@ -159,8 +176,11 @@ export class Gateway extends EventEmitter {
     this.stopHeartbeat();
     this.heartbeatAck = true;
     // Send first heartbeat with jitter
-    setTimeout(() => this.sendHeartbeat(), interval * Math.random());
-    this.heartbeatInterval = setInterval(() => {
+    this.heartbeatJitterTimeout = setTimeout(() => {
+      this.heartbeatJitterTimeout = null;
+      this.sendHeartbeat();
+    }, interval * Math.random());
+    this.heartbeatTimer = setInterval(() => {
       if (!this.heartbeatAck) {
         this.emit('debug', 'Heartbeat not acknowledged — reconnecting');
         this.reconnect();
@@ -172,9 +192,13 @@ export class Gateway extends EventEmitter {
   }
 
   private stopHeartbeat(): void {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
+    if (this.heartbeatJitterTimeout) {
+      clearTimeout(this.heartbeatJitterTimeout);
+      this.heartbeatJitterTimeout = null;
+    }
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
   }
 
@@ -195,14 +219,23 @@ export class Gateway extends EventEmitter {
   }
 
   private reconnect(): void {
+    if (this.reconnecting || this.destroying) return;
+    this.reconnecting = true;
+
     this.stopHeartbeat();
-    this.ws?.close(4000);
-    this.ws = null;
+    if (this.ws) {
+      this.ws.removeAllListeners();
+      this.ws.close(4000);
+      this.ws = null;
+    }
 
     const delay = this.reconnectDelay + Math.random() * 1000;
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, RECONNECT_MAX);
 
     this.emit('debug', `Reconnecting in ${Math.round(delay)}ms`);
-    setTimeout(() => this.connect(), delay);
+    this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = null;
+      this.connect();
+    }, delay);
   }
 }

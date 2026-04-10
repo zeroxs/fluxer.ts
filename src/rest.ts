@@ -1,7 +1,7 @@
 /** Lightweight REST client for the Fluxer API. Built on native fetch. */
 
 const API_BASE = 'https://api.fluxer.app/v1';
-const USER_AGENT = 'fluxer.ts (https://github.com/zeroxs/fluxer.ts, 0.1.0)';
+const USER_AGENT = 'fluxer.ts (https://github.com/zeroxs/fluxer.ts, 0.2.0)';
 
 export class FluxerAPIError extends Error {
   constructor(
@@ -20,6 +20,7 @@ export class RateLimitError extends Error {
     public readonly retryAfter: number,
     public readonly method: string,
     public readonly path: string,
+    public readonly global: boolean = false,
   ) {
     super(`Rate limited on ${method} ${path} — retry after ${retryAfter}ms`);
     this.name = 'RateLimitError';
@@ -51,7 +52,7 @@ export class REST {
     return this.request('POST', path, options);
   }
 
-  async patch<T = unknown>(path: string, options?: { body?: unknown }): Promise<T> {
+  async patch<T = unknown>(path: string, options?: { body?: unknown; files?: Array<{ name: string; data: Buffer | ArrayBuffer; filename?: string }> }): Promise<T> {
     return this.request('PATCH', path, options);
   }
 
@@ -78,7 +79,7 @@ export class REST {
         // Multipart form data for file uploads
         const form = new FormData();
         if (options.body) {
-          form.append('payload_json', JSON.stringify(options.body));
+          form.append('payload_json', new Blob([JSON.stringify(options.body)], { type: 'application/json' }));
         }
         for (let i = 0; i < options.files.length; i++) {
           const f = options.files[i];
@@ -104,14 +105,16 @@ export class REST {
         throw new RateLimitError(retryAfter, method, path);
       }
 
-      // Server error — retry
+      // Server error — retry with exponential backoff
       if (res.status >= 500 && attempt < this.maxRetries) {
-        await sleep(1000 * (attempt + 1) + jitter());
+        await sleep(1000 * Math.pow(2, attempt) + jitter());
         continue;
       }
 
       if (!res.ok) {
-        const errBody = await res.json().catch(() => res.text());
+        const text = await res.text();
+        let errBody: unknown;
+        try { errBody = JSON.parse(text); } catch { errBody = text; }
         throw new FluxerAPIError(res.status, errBody, method, path);
       }
 
