@@ -73,20 +73,26 @@ export class Gateway extends EventEmitter {
       return;
     }
 
-    if (payload.s !== null) this.seq = payload.s;
+    if (payload.s != null) this.seq = payload.s;
 
     switch (payload.op) {
-      case GatewayOpcode.Hello:
-        this.startHeartbeat((payload.d as { heartbeat_interval: number }).heartbeat_interval);
+      case GatewayOpcode.Hello: {
+        const interval = (payload.d as { heartbeat_interval: number }).heartbeat_interval;
+        this.emit('debug', `Hello received, heartbeat interval: ${interval}ms`);
+        this.startHeartbeat(interval);
         if (this.sessionId) {
+          this.emit('debug', 'Resuming session');
           this.resume();
         } else {
+          this.emit('debug', 'Identifying');
           this.identify();
         }
         break;
+      }
 
       case GatewayOpcode.HeartbeatAck:
         this.heartbeatAck = true;
+        this.emit('debug', 'Heartbeat acknowledged');
         break;
 
       case GatewayOpcode.Heartbeat:
@@ -169,7 +175,9 @@ export class Gateway extends EventEmitter {
   }
 
   private sendHeartbeat(): void {
-    this.send({ op: GatewayOpcode.Heartbeat, d: this.seq, s: null, t: null });
+    const seq = this.seq ?? null;
+    this.emit('debug', `Heartbeat sent (seq: ${seq})`);
+    this.send({ op: GatewayOpcode.Heartbeat, d: seq, s: null, t: null });
   }
 
   private startHeartbeat(interval: number): void {
@@ -213,6 +221,13 @@ export class Gateway extends EventEmitter {
     if (fatal.includes(code)) {
       this.emit('error', new Error(`Fatal gateway close: ${code} ${reason}`));
       return;
+    }
+
+    // Invalid resume — clear session so next connect does a fresh identify
+    if (code === 4002 || code === 4007) {
+      this.sessionId = null;
+      this.seq = null;
+      this.resumeUrl = null;
     }
 
     this.reconnect();
