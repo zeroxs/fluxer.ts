@@ -16,6 +16,61 @@ import type { Snowflake, Embed } from './types.generated.js';
 /** Fluxer epoch: 2015-01-01 00:00:00 UTC */
 export const FLUXER_EPOCH = 1420070400000;
 
+// ─── Permissions ──────────────────────────────────────────────
+// Fluxer permission bitfield values. Use with roles and channel overwrites.
+// Values are bigints because some exceed 32-bit range.
+
+export const Permissions = {
+  CreateInstantInvite:  0x1n,
+  KickMembers:          0x2n,
+  BanMembers:           0x4n,
+  Administrator:        0x8n,
+  ManageChannels:       0x10n,
+  ManageGuild:          0x20n,
+  AddReactions:         0x40n,
+  ViewAuditLog:         0x80n,
+  PrioritySpeaker:      0x100n,
+  Stream:               0x200n,
+  ViewChannel:          0x400n,
+  SendMessages:         0x800n,
+  SendTTSMessages:      0x1000n,
+  ManageMessages:       0x2000n,
+  EmbedLinks:           0x4000n,
+  AttachFiles:          0x8000n,
+  ReadMessageHistory:   0x10000n,
+  MentionEveryone:      0x20000n,
+  UseExternalEmojis:    0x40000n,
+  Connect:              0x100000n,
+  Speak:                0x200000n,
+  MuteMembers:          0x400000n,
+  DeafenMembers:        0x800000n,
+  MoveMembers:          0x1000000n,
+  UseVAD:               0x2000000n,
+  ChangeNickname:       0x4000000n,
+  ManageNicknames:      0x8000000n,
+  ManageRoles:          0x10000000n,
+  ManageWebhooks:       0x20000000n,
+  ManageExpressions:    0x40000000n,
+  UseExternalStickers:  0x2000000000n,
+  ModerateMembers:      0x10000000000n,
+  CreateExpressions:    0x80000000000n,
+  PinMessages:          0x8000000000000n,
+  BypassSlowmode:       0x10000000000000n,
+  UpdateRtcRegion:      0x20000000000000n,
+} as const;
+
+/** Check if a permission bitfield includes a specific permission. */
+export function hasPermission(permissions: bigint | string, perm: bigint): boolean {
+  const bits = typeof permissions === 'string' ? BigInt(permissions) : permissions;
+  if (bits & Permissions.Administrator) return true;
+  return (bits & perm) === perm;
+}
+
+/** Combine multiple permissions into a single bitfield. */
+export function combinePermissions(...perms: bigint[]): bigint {
+  return perms.reduce((a, b) => a | b, 0n);
+}
+
 // ─── Channel Types ─────────────────────────────────────────────
 // Not present in the OpenAPI spec as an enum, but essential for SDK consumers.
 

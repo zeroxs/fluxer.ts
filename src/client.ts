@@ -429,8 +429,13 @@ export class Client extends EventEmitter {
     await this.rest.delete(Routes.channelMessage(channelId, messageId));
   }
 
-  /** Bulk delete messages (2-100 messages, max 14 days old). */
+  /** Bulk delete messages (1-100 messages, max 14 days old). Gracefully handles single messages. */
   async bulkDelete(channelId: Snowflake, messageIds: Snowflake[]): Promise<void> {
+    if (messageIds.length === 0) return;
+    if (messageIds.length === 1) {
+      await this.rest.delete(Routes.channelMessage(channelId, messageIds[0]));
+      return;
+    }
     await this.rest.post(Routes.channelBulkDelete(channelId), { body: { message_ids: messageIds } });
   }
 
@@ -610,6 +615,13 @@ export class Client extends EventEmitter {
   /** Set bot nickname in a guild. */
   async setNickname(guildId: Snowflake, nickname: string | null): Promise<void> {
     await this.rest.patch(Routes.guildMemberMe(guildId), { body: { nick: nickname } });
+  }
+
+  /** Search guild members by username/nickname. */
+  async searchMembers(guildId: Snowflake, query: string, options?: { limit?: number }): Promise<GuildMember[]> {
+    const params = new URLSearchParams({ query });
+    if (options?.limit) params.set('limit', String(options.limit));
+    return this.rest.get<GuildMember[]>(`${Routes.guildMemberSearch(guildId)}?${params}`);
   }
 
   // ─── Roles ────────────────────────────────────────────────────

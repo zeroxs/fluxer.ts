@@ -6,7 +6,7 @@ Lightweight, TypeScript-first SDK for building [Fluxer](https://fluxer.gg) bots.
 - **TypeScript-first** — 870+ lines of type definitions generated from the Fluxer OpenAPI spec
 - **Simple API** — connect, listen, send — no unnecessary abstractions
 - **Built for Fluxer** — handles Fluxer-specific gateway behavior (guild `properties`, v1 gateway protocol)
-- **Complete** — 94 route builders, 40+ gateway events, 65 convenience methods
+- **Complete** — 94 route builders, 40+ gateway events, 66 convenience methods, 35 permission constants
 
 ## Install
 
@@ -339,6 +339,43 @@ node tools/generate-types.mjs > src/types.generated.ts
 ```
 
 The generator reads `reference/openapi.json` and outputs TypeScript interfaces and enums for all bot-relevant API objects. Modify `tools/generate-types.mjs` to add schemas or change mappings.
+
+## Permissions (v0.3.0+)
+
+```typescript
+import { Permissions, hasPermission, combinePermissions } from 'fluxer.ts';
+
+// Check permissions — no more hardcoding bit values
+if (hasPermission(member.permissions, Permissions.ManageMessages)) {
+  // can delete and pin messages
+}
+
+// Administrator bypasses everything automatically
+hasPermission(adminPerms, Permissions.SendMessages); // always true
+
+// Combine for role creation
+const modPerms = combinePermissions(
+  Permissions.KickMembers,
+  Permissions.BanMembers,
+  Permissions.ManageMessages,
+);
+await client.createRole(guildId, { name: 'Mod', permissions: modPerms.toString() });
+```
+
+All 35 Fluxer permission values included. See the [permissions guide](docs/permissions.md) for the full reference.
+
+## Examples
+
+Ready-to-run bot examples in [`examples/`](examples/):
+
+- **[basic-bot.mjs](examples/basic-bot.mjs)** — Simplest possible bot. Responds to `!ping`. Start here.
+- **[moderation-bot.mjs](examples/moderation-bot.mjs)** — Kick, ban, timeout, purge, lock/unlock with permission checks.
+- **[reaction-roles.mjs](examples/reaction-roles.mjs)** — Assign roles when users react to a message.
+
+## Documentation
+
+- **[Getting Started](docs/getting-started.md)** — Zero to working bot in 5 minutes.
+- **[Permissions Guide](docs/permissions.md)** — Complete guide to the Permissions API.
 
 ## How it differs from @fluxerjs/core
 

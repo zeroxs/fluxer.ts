@@ -30,6 +30,7 @@ export class Gateway extends EventEmitter {
   private reconnecting = false;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = RECONNECT_INITIAL;
+  private heartbeatIntervalMs = 0;
 
   constructor(options: GatewayOptions) {
     super();
@@ -78,6 +79,7 @@ export class Gateway extends EventEmitter {
     switch (payload.op) {
       case GatewayOpcode.Hello: {
         const interval = (payload.d as { heartbeat_interval: number }).heartbeat_interval;
+        this.heartbeatIntervalMs = interval;
         this.emit('debug', `Hello received, heartbeat interval: ${interval}ms`);
         this.startHeartbeat(interval);
         if (this.sessionId) {
@@ -96,7 +98,21 @@ export class Gateway extends EventEmitter {
         break;
 
       case GatewayOpcode.Heartbeat:
+        // Server requested immediate heartbeat — send and reset interval to avoid doubles
         this.sendHeartbeat();
+        if (this.heartbeatTimer) {
+          const interval = this.heartbeatIntervalMs;
+          clearInterval(this.heartbeatTimer);
+          this.heartbeatTimer = setInterval(() => {
+            if (!this.heartbeatAck) {
+              this.emit('debug', 'Heartbeat not acknowledged — reconnecting');
+              this.reconnect();
+              return;
+            }
+            this.heartbeatAck = false;
+            this.sendHeartbeat();
+          }, interval);
+        }
         break;
 
       case GatewayOpcode.Dispatch:
