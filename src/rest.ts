@@ -1,7 +1,7 @@
 /** Lightweight REST client for the Fluxer API. Built on native fetch. */
 
 const API_BASE = 'https://api.fluxer.app/v1';
-const USER_AGENT = 'fluxer.ts (https://github.com/zeroxs/fluxer.ts, 0.2.0)';
+const USER_AGENT = 'fluxer.ts (https://github.com/zeroxs/fluxer.ts, 0.3.0)';
 
 export class FluxerAPIError extends Error {
   constructor(
