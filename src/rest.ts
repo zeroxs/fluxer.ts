@@ -91,7 +91,7 @@ export class REST {
         // Multipart form data for file uploads
         const form = new FormData();
         if (options.body) {
-          form.append('payload_json', new Blob([JSON.stringify(options.body)], { type: 'application/json' }));
+          form.append('payload_json', JSON.stringify(options.body));
         }
         for (let i = 0; i < options.files.length; i++) {
           const f = options.files[i];
