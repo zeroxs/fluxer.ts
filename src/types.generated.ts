@@ -21,7 +21,7 @@ export enum MessageFlags {
 export enum UserFlags {
   /** User is a staff member */
   STAFF = 1,
-  /** User is a community test program member */
+  /** User is a CTP member */
   CTP_MEMBER = 2,
   /** User is a partner */
   PARTNER = 4,
@@ -31,6 +31,8 @@ export enum UserFlags {
   FRIENDLY_BOT = 16,
   /** Bot requires manual approval for friend requests */
   FRIENDLY_BOT_MANUAL_APPROVAL = 32,
+  /** User is flagged as a spammer */
+  SPAMMER = 64,
 }
 
 export enum SystemChannelFlags {
@@ -94,9 +96,7 @@ export enum GuildMFALevel {
 }
 
 export enum NSFWLevel {
-  DEFAULT = 0,
-  EXPLICIT = 1,
-  SAFE = 2,
+  SAFE = 0,
   AGE_RESTRICTED = 3,
 }
 
@@ -172,6 +172,7 @@ export enum JoinSourceType {
   VANITY_URL = 2,
   BOT_INVITE = 3,
   ADMIN_FORCE_ADD = 4,
+  DISCOVERY = 6,
 }
 
 // ─── Core Objects ─────────────────────────────────────────────
@@ -194,6 +195,8 @@ export interface User {
   /** Whether the user is an official system user */
   system?: boolean;
   flags: UserFlags;
+  /** The user's account-wide reply mention preference */
+  mention_flags?: unknown;
 }
 
 export interface Guild {
@@ -242,8 +245,14 @@ export interface Guild {
   verification_level: GuildVerificationLevel;
   /** Required MFA level for moderation actions */
   mfa_level: GuildMFALevel;
-  /** The NSFW level of the guild */
+  /** The NSFW level of the guild (legacy; derived from nsfw) */
   nsfw_level: NSFWLevel;
+  /** Whether the guild is marked as adult (18+) content */
+  nsfw: boolean;
+  /** Whether the guild displays a content warning before entering */
+  content_warning_level: unknown;
+  /** Custom guild-wide content warning text; null falls back to a localized default */
+  content_warning_text?: string | null;
   /** Level of content filtering for explicit media */
   explicit_content_filter: GuildExplicitContentFilter;
   /** Default notification level for new members */
@@ -251,7 +260,20 @@ export interface Guild {
   disabled_operations: GuildOperations;
   /** ISO8601 timestamp controlling how far back members without Read Message History can access messages. When null, no historical access is allowed. */
   message_history_cutoff?: string | null;
-  permissions?: string | null;
+  /** The current user permissions in this guild when available */
+  permissions?: string;
+  /** Roles in the guild from gateway state */
+  roles?: Role[];
+  /** Emojis in the guild from gateway state */
+  emojis?: Emoji[];
+  /** Stickers in the guild from gateway state */
+  stickers?: Sticker[];
+  /** Channels visible to the requesting user from gateway state */
+  channels?: Channel[];
+  member_count?: number;
+  online_count?: number;
+  approximate_member_count?: number;
+  approximate_presence_count?: number;
 }
 
 export interface Channel {
@@ -277,6 +299,8 @@ export interface Channel {
   bitrate?: number | null;
   /** The maximum number of users allowed in the voice channel */
   user_limit?: number | null;
+  /** The maximum active voice connections allowed per user in the voice channel */
+  voice_connection_limit?: number | null;
   /** The voice region ID for the voice channel */
   rtc_region?: string | null;
   /** The ID of the last message sent in this channel */
@@ -287,8 +311,13 @@ export interface Channel {
   permission_overwrites?: PermissionOverwrite[];
   /** The recipients of the DM channel */
   recipients?: User[];
-  /** Whether the channel is marked as NSFW */
+  /** Whether the channel is marked as NSFW (effective value, walking channel → category → guild) */
   nsfw?: boolean;
+  /** Per-channel adult-content override; null means inherit from parent category and then guild. Categories use this same field as their own override. */
+  nsfw_override?: boolean | null;
+  content_warning_level?: unknown;
+  /** Custom channel content warning text (max 200 characters); null inherits from parent or guild */
+  content_warning_text?: string | null;
   rate_limit_per_user?: number;
   /** Custom nicknames for users in this channel (for group DMs) */
   nicks?: Record<string, string>;
@@ -316,78 +345,39 @@ export interface Message {
   /** Whether the message mentions @everyone */
   mention_everyone: boolean;
   /** Whether the message was sent as text-to-speech */
-  tts?: boolean;
+  tts: boolean;
   /** The users mentioned in the message */
-  mentions?: User[] | null;
+  mentions: User[];
   /** The role IDs mentioned in the message */
-  mention_roles?: string[] | null;
+  mention_roles: string[];
+  /** Channels mentioned in the message that are visible to @everyone */
+  mention_channels?: unknown[] | null;
+  /** Users referenced from non-notifying content, embed, and snapshot text, included for client-side resolution */
+  users?: User[] | null;
   /** The embeds attached to the message */
   embeds?: Embed[] | null;
   /** The files attached to the message */
   attachments?: Attachment[] | null;
   /** The stickers sent with the message */
   stickers?: MessageSticker[] | null;
+  /** IDs of custom emojis in this message that are classified as NSFW */
+  nsfw_emojis?: Snowflake[];
   /** The reactions on the message */
   reactions?: Reaction[] | null;
   /** Reference data for replies or forwards */
-  message_reference?: MessageReference | null;
+  message_reference?: { channel_id: Snowflake; message_id: Snowflake; guild_id?: Snowflake | null; type: MessageReferenceType } | null;
   /** Snapshots of forwarded messages */
   message_snapshots?: unknown[] | null;
   /** A client-provided value for message deduplication */
   nonce?: string | null;
   /** Call information if this message represents a call */
-  call?: MessageCall | null;
+  call?: { participants: string[]; ended_timestamp?: string | null } | null;
   /** The message that this message is replying to or forwarding */
-  referenced_message?: MessageBase | null;
+  referenced_message?: { id: Snowflake; channel_id: Snowflake; author: User; webhook_id?: Snowflake | null; type: number; flags: MessageFlags; content: string; timestamp: string; edited_timestamp?: string | null; pinned: boolean; mention_everyone: boolean; tts: boolean; mentions: User[]; mention_roles: string[]; mention_channels?: unknown[] | null; users?: User[] | null; embeds?: Embed[] | null; attachments?: Attachment[] | null; stickers?: MessageSticker[] | null; nsfw_emojis?: Snowflake[]; reactions?: Reaction[] | null; message_reference?: { channel_id: Snowflake; message_id: Snowflake; guild_id?: Snowflake | null; type: MessageReferenceType } | null; message_snapshots?: unknown[] | null; nonce?: string | null; call?: { participants: string[]; ended_timestamp?: string | null } | null } | null;
   /** The guild ID (present on gateway dispatch events) */
   guild_id?: Snowflake;
   /** Partial member data (present on gateway dispatch events) */
   member?: GuildMember;
-}
-
-export interface MessageBase {
-  /** The unique identifier (snowflake) for this message */
-  id: Snowflake;
-  /** The ID of the channel this message was sent in */
-  channel_id: Snowflake;
-  author: User;
-  /** The ID of the webhook that sent this message */
-  webhook_id?: Snowflake | null;
-  /** The type of message */
-  type: number;
-  flags: MessageFlags;
-  /** The text content of the message */
-  content: string;
-  /** The ISO 8601 timestamp of when the message was created */
-  timestamp: string;
-  /** The ISO 8601 timestamp of when the message was last edited */
-  edited_timestamp?: string | null;
-  /** Whether the message is pinned */
-  pinned: boolean;
-  /** Whether the message mentions @everyone */
-  mention_everyone: boolean;
-  /** Whether the message was sent as text-to-speech */
-  tts?: boolean;
-  /** The users mentioned in the message */
-  mentions?: User[] | null;
-  /** The role IDs mentioned in the message */
-  mention_roles?: string[] | null;
-  /** The embeds attached to the message */
-  embeds?: Embed[] | null;
-  /** The files attached to the message */
-  attachments?: Attachment[] | null;
-  /** The stickers sent with the message */
-  stickers?: MessageSticker[] | null;
-  /** The reactions on the message */
-  reactions?: Reaction[] | null;
-  /** Reference data for replies or forwards */
-  message_reference?: MessageReference | null;
-  /** Snapshots of forwarded messages */
-  message_snapshots?: unknown[] | null;
-  /** A client-provided value for message deduplication */
-  nonce?: string | null;
-  /** Call information if this message represents a call */
-  call?: MessageCall | null;
 }
 
 export interface GuildMember {
@@ -411,6 +401,7 @@ export interface GuildMember {
   /** ISO8601 timestamp until which the member is timed out */
   communication_disabled_until?: string | null;
   profile_flags?: MemberProfileFlags | null;
+  mention_flags?: unknown | null;
 }
 
 export interface Role {
@@ -503,6 +494,12 @@ export interface Embed {
   video?: EmbedMedia | null;
   /** The audio of the embed */
   audio?: EmbedMedia | null;
+  /** Sanitized oEmbed HTML for trusted specialized embed renderers */
+  html?: string | null;
+  /** The preferred width of sanitized oEmbed HTML */
+  html_width?: number | null;
+  /** The preferred height of sanitized oEmbed HTML */
+  html_height?: number | null;
   /** Whether the embed is flagged as NSFW */
   nsfw?: boolean | null;
   /** Internal nested embeds generated by unfurlers */
@@ -538,6 +535,12 @@ export interface EmbedChild {
   video?: EmbedMedia | null;
   /** The audio of the embed */
   audio?: EmbedMedia | null;
+  /** Sanitized oEmbed HTML for trusted specialized embed renderers */
+  html?: string | null;
+  /** The preferred width of sanitized oEmbed HTML */
+  html_width?: number | null;
+  /** The preferred height of sanitized oEmbed HTML */
+  html_height?: number | null;
   /** Whether the embed is flagged as NSFW */
   nsfw?: boolean | null;
 }
@@ -602,16 +605,6 @@ export interface Reaction {
   me?: boolean | null;
 }
 
-export interface MessageReference {
-  /** The ID of the channel containing the referenced message */
-  channel_id: Snowflake;
-  /** The ID of the referenced message */
-  message_id: Snowflake;
-  /** The ID of the guild containing the referenced message */
-  guild_id?: Snowflake | null;
-  type: MessageReferenceType;
-}
-
 export interface MessageSticker {
   /** The unique identifier of the sticker */
   id: Snowflake;
@@ -619,13 +612,8 @@ export interface MessageSticker {
   name: string;
   /** Whether the sticker is animated */
   animated: boolean;
-}
-
-export interface MessageCall {
-  /** The user IDs of participants in the call */
-  participants: string[];
-  /** The ISO 8601 timestamp of when the call ended */
-  ended_timestamp?: string | null;
+  /** Whether this sticker is classified as NSFW */
+  nsfw?: boolean;
 }
 
 export interface PermissionOverwrite {
@@ -646,6 +634,8 @@ export interface Emoji {
   name: string;
   /** Whether this emoji is animated */
   animated: boolean;
+  /** Whether this emoji is classified as NSFW */
+  nsfw: boolean;
 }
 
 export interface PartialChannel {
@@ -709,6 +699,8 @@ export interface Sticker {
   tags: string[];
   /** Whether this sticker is animated */
   animated: boolean;
+  /** Whether this sticker is classified as NSFW */
+  nsfw: boolean;
 }
 
 export interface VanityURL {
@@ -866,7 +858,8 @@ export interface Pack {
 // ─── Pins ─────────────────────────────────────────────────────
 
 export interface PinnedMessage {
-  message: MessageBase;
+  /** The pinned message */
+  message: { id: Snowflake; channel_id: Snowflake; author: User; webhook_id?: Snowflake | null; type: number; flags: MessageFlags; content: string; timestamp: string; edited_timestamp?: string | null; pinned: boolean; mention_everyone: boolean; tts: boolean; mentions: User[]; mention_roles: string[]; mention_channels?: unknown[] | null; users?: User[] | null; embeds?: Embed[] | null; attachments?: Attachment[] | null; stickers?: MessageSticker[] | null; nsfw_emojis?: Snowflake[]; message_reference?: { channel_id: Snowflake; message_id: Snowflake; guild_id?: Snowflake | null; type: MessageReferenceType } | null; message_snapshots?: unknown[] | null; nonce?: string | null; call?: { participants: string[]; ended_timestamp?: string | null } | null };
   /** The ISO 8601 timestamp of when the message was pinned */
   pinned_at: string;
 }

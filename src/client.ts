@@ -41,11 +41,13 @@ function normalizeGuild(data: Record<string, unknown>): Guild {
     verification_level: (props.verification_level ?? 0) as number,
     mfa_level: (props.mfa_level ?? 0) as number,
     nsfw_level: (props.nsfw_level ?? 0) as number,
+    nsfw: (props.nsfw ?? false) as boolean,
+    content_warning_level: props.content_warning_level ?? 0,
     explicit_content_filter: (props.explicit_content_filter ?? 0) as number,
     default_message_notifications: (props.default_message_notifications ?? 0) as number,
     disabled_operations: (props.disabled_operations ?? 0) as number,
     message_history_cutoff: (props.message_history_cutoff ?? null) as string | null,
-    permissions: (props.permissions ?? null) as string | null,
+    permissions: (props.permissions ?? undefined) as string | undefined,
   };
 }
 
