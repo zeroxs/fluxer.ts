@@ -1,6 +1,6 @@
 {
   "name": "fluxer.ts",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Lightweight, TypeScript-first SDK for building Fluxer bots",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,14 +11,23 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "generate": "node tools/generate-types.mjs > src/types.generated.ts",
     "build": "npm run generate && tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist"
   },
-  "keywords": ["fluxer", "bot", "sdk", "api", "typescript", "discord"],
+  "keywords": [
+    "fluxer",
+    "bot",
+    "sdk",
+    "api",
+    "typescript",
+    "discord"
+  ],
   "author": "Sharon Fox & Vigil",
   "repository": {
     "type": "git",
