@@ -7,6 +7,10 @@ import { GatewayOpcode, type GatewayPayload } from './types.js';
 const GATEWAY_VERSION = 1;
 const RECONNECT_INITIAL = 1000;
 const RECONNECT_MAX = 45000;
+// Max time from opening a socket until Hello arrives. The heartbeat watchdog only
+// starts after Hello, so without this a socket that black-holes during the
+// handshake (never fires open/close/error) would hang silently forever.
+const CONNECT_TIMEOUT = 20000;
 
 export interface GatewayOptions {
   token: string;
@@ -22,6 +26,7 @@ export class Gateway extends EventEmitter {
 
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private heartbeatJitterTimeout: ReturnType<typeof setTimeout> | null = null;
+  private connectTimeout: ReturnType<typeof setTimeout> | null = null;
   private heartbeatAck = true;
   private sessionId: string | null = null;
   private seq: number | null = null;
@@ -44,6 +49,17 @@ export class Gateway extends EventEmitter {
     const url = this.resumeUrl ?? this.gatewayUrl;
     const fullUrl = `${url}?v=${GATEWAY_VERSION}&encoding=json`;
 
+    // Watchdog for the connecting→Hello window. The `ws` library does not time
+    // out connections, and the heartbeat watchdog only arms after Hello — so a
+    // socket that stalls during the handshake (never firing open/close/error)
+    // would otherwise hang forever with the process alive. Cleared on Hello.
+    this.clearConnectTimeout();
+    this.connectTimeout = setTimeout(() => {
+      this.connectTimeout = null;
+      this.emit('debug', 'Connection timed out before Hello — reconnecting');
+      this.reconnect();
+    }, CONNECT_TIMEOUT);
+
     this.ws = new WebSocket(fullUrl);
     this.ws.on('open', () => this.emit('debug', `Connected to ${url}`));
     this.ws.on('message', (data: WebSocket.RawData) => this.onMessage(data));
@@ -51,9 +67,17 @@ export class Gateway extends EventEmitter {
     this.ws.on('error', (err: Error) => this.emit('error', err));
   }
 
+  private clearConnectTimeout(): void {
+    if (this.connectTimeout) {
+      clearTimeout(this.connectTimeout);
+      this.connectTimeout = null;
+    }
+  }
+
   destroy(): void {
     this.destroying = true;
     this.stopHeartbeat();
+    this.clearConnectTimeout();
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -78,6 +102,8 @@ export class Gateway extends EventEmitter {
 
     switch (payload.op) {
       case GatewayOpcode.Hello: {
+        // Handshake completed — the heartbeat watchdog now covers liveness.
+        this.clearConnectTimeout();
         const interval = (payload.d as { heartbeat_interval: number }).heartbeat_interval;
         this.heartbeatIntervalMs = interval;
         this.emit('debug', `Hello received, heartbeat interval: ${interval}ms`);
@@ -254,6 +280,7 @@ export class Gateway extends EventEmitter {
     this.reconnecting = true;
 
     this.stopHeartbeat();
+    this.clearConnectTimeout();
     if (this.ws) {
       this.ws.removeAllListeners();
       this.ws.close(4000);
